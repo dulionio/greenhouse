@@ -1,4 +1,5 @@
 add_executable(${PROJECT_NAME}
+  climate.cpp
   main.cpp
 )
 
