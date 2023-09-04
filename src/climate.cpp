@@ -33,6 +33,7 @@ void Climate::init() {
   gpio_set_dir(PICO_DEFAULT_SPI_CSN_PIN, GPIO_OUT);
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
 
+  // Initialize device and retrieve compensation values
   chk(bme280_init(&device), "bme280_init");
 
   // Configure indoor navigation settings
@@ -43,7 +44,7 @@ void Climate::init() {
   settings.osr_t = BME280_OVERSAMPLING_2X;
   chk(bme280_set_sensor_settings(BME280_SEL_ALL_SETTINGS, &settings, &device), "bme280_set_sensor_settings");
 
-  // Calculate delay between forced mode and reading measurement
+  // Calculate delay between forced mode and reading climate values
   chk(bme280_cal_meas_delay(&delay, &settings), "bme280_cal_meas_delay");
 }
 
