@@ -124,9 +124,16 @@ void chk(int8_t rslt, const char api_name[]) {
         rslt);
       break;
 
+    case BME280_E_NVM_COPY_FAILED:
+      printf("Error [%d] : Failed to copy NVM during reset\r\n", rslt);
+      break;
+
     default:
       printf("Error [%d] : Unknown error code\r\n", rslt);
       break;
     }
   }
 }
+
+// #define BME280_E_SLEEP_MODE_FAIL                  INT8_C(-5)
+// #define BME280_E_NVM_COPY_FAILED                  INT8_C(-6)
