@@ -18,13 +18,6 @@ int main() {
       climate.getTemperature(),
       climate.getHumidity(),
       climate.getPressure());
-    printf(
-      "Temperature OSR: %d, Humidity OSR: %d, Pressure OSR: %d, Filter: %d, Standby Time: %d\n",
-      climate.getTemperatureOsr(),
-      climate.getHumidityOsr(),
-      climate.getPressureOsr(),
-      climate.getFilter(),
-      climate.getStandbyTime());
     sleep_ms(5000);
   }
 }

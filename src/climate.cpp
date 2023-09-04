@@ -5,17 +5,25 @@
 #include <stdio.h>
 #include <cstring>
 
+BME280_INTF_RET_TYPE bme280_read(uint8_t reg_addr, uint8_t* reg_data, uint32_t length, void* intf_ptr);
+BME280_INTF_RET_TYPE bme280_write(uint8_t reg_addr, const uint8_t* reg_data, uint32_t length, void* intf_ptr);
+void bme280_delay(uint32_t period, void* intf_ptr);
+void fmt(char* dst, size_t len, int dec, int32_t num);
+void chk(int8_t rslt, const char api_name[]);
+
 Climate::Climate() {
-  device.read = Climate::bme280_read;
-  device.write = Climate::bme280_write;
-  device.delay_us = Climate::bme280_delay;
+  device.read = bme280_read;
+  device.write = bme280_write;
+  device.delay_us = bme280_delay;
   device.intf = BME280_SPI_INTF;
   device.intf_ptr = this;
 }
 
 void Climate::init() {
-  // Use SPI0 at 2MHz
-  spi_init(spi0, 2 * 1000 * 1000);
+  struct bme280_settings settings = { 0 };
+
+  // Use SPI0 at 1MHz for up to 10m
+  spi_init(spi0, 1000 * 1000);
   gpio_set_function(PICO_DEFAULT_SPI_RX_PIN, GPIO_FUNC_SPI);
   gpio_set_function(PICO_DEFAULT_SPI_SCK_PIN, GPIO_FUNC_SPI);
   gpio_set_function(PICO_DEFAULT_SPI_TX_PIN, GPIO_FUNC_SPI);
@@ -26,19 +34,30 @@ void Climate::init() {
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
 
   chk(bme280_init(&device), "bme280_init");
+
+  // Configure indoor navigation settings
   chk(bme280_get_sensor_settings(&settings, &device), "bme280_get_sensor_settings");
+  settings.filter = BME280_FILTER_COEFF_16;
+  settings.osr_h = BME280_OVERSAMPLING_1X;
+  settings.osr_p = BME280_OVERSAMPLING_16X;
+  settings.osr_t = BME280_OVERSAMPLING_2X;
+  chk(bme280_set_sensor_settings(BME280_SEL_ALL_SETTINGS, &settings, &device), "bme280_set_sensor_settings");
+
+  // Calculate delay between forced mode and reading measurement
+  chk(bme280_cal_meas_delay(&delay, &settings), "bme280_cal_meas_delay");
 }
 
 void Climate::read() {
   struct bme280_data data = { 0 };
-
+  chk(bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &device), "bme280_set_sensor_mode");
+  bme280_delay(delay, this);
   chk(bme280_get_sensor_data(BME280_ALL, &data, &device), "bme280_get_sensor_data");
-  toa(temperature, sizeof(temperature), 2, data.temperature);
-  toa(humidity, sizeof(humidity), 3, data.humidity);
-  toa(pressure, sizeof(pressure), 2, data.pressure);
+  fmt(temperature, sizeof(temperature), 2, data.temperature);
+  fmt(humidity, sizeof(humidity), 3, data.humidity);
+  fmt(pressure, sizeof(pressure), 2, data.pressure);
 }
 
-BME280_INTF_RET_TYPE Climate::bme280_read(uint8_t reg_addr, uint8_t* reg_data, uint32_t length, void* intf_ptr) {
+BME280_INTF_RET_TYPE bme280_read(uint8_t reg_addr, uint8_t* reg_data, uint32_t length, void* intf_ptr) {
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);
   spi_write_blocking(spi0, &reg_addr, 1);
   spi_read_blocking(spi0, 0, reg_data, length);
@@ -46,7 +65,7 @@ BME280_INTF_RET_TYPE Climate::bme280_read(uint8_t reg_addr, uint8_t* reg_data, u
   return BME280_OK;
 }
 
-BME280_INTF_RET_TYPE Climate::bme280_write(uint8_t reg_addr, const uint8_t* reg_data, uint32_t length, void* intf_ptr) {
+BME280_INTF_RET_TYPE bme280_write(uint8_t reg_addr, const uint8_t* reg_data, uint32_t length, void* intf_ptr) {
   gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);
   spi_write_blocking(spi0, &reg_addr, 1);
   spi_write_blocking(spi0, reg_data, length);
@@ -54,11 +73,28 @@ BME280_INTF_RET_TYPE Climate::bme280_write(uint8_t reg_addr, const uint8_t* reg_
   return BME280_OK;
 }
 
-void Climate::bme280_delay(uint32_t period, void* intf_ptr) {
+void bme280_delay(uint32_t period, void* intf_ptr) {
   sleep_us(period);
 }
 
-void Climate::chk(int8_t rslt, const char api_name[]) {
+void fmt(char* dst, size_t len, int dec, int32_t num) {
+  char buf[len];
+  int idx = len - 1;
+  int pos = idx - dec - 1;
+
+  buf[idx--] = 0;
+  do {
+    char ch = '0' + num % 10;
+    buf[idx--] = ch;
+    if (idx == pos) {
+      buf[idx--] = '.';
+    }
+    num /= 10;
+  } while (idx >= 0 && (idx > pos || num != 0));
+  strcpy(dst, &buf[idx + 1]);
+}
+
+void chk(int8_t rslt, const char api_name[]) {
   if (rslt != BME280_OK) {
     printf("%s\t", api_name);
 
@@ -92,20 +128,4 @@ void Climate::chk(int8_t rslt, const char api_name[]) {
       break;
     }
   }
-}
-
-void Climate::toa(char* dst, size_t len, int dec, int32_t num) {
-  int idx = len - 1;
-  int pos = idx - dec - 1;
-  char buf[len];
-  buf[idx--] = 0;
-  do {
-    char ch = '0' + num % 10;
-    buf[idx--] = ch;
-    if (idx == pos) {
-      buf[idx--] = '.';
-    }
-    num /= 10;
-  } while (idx > 0 && (idx > pos || num != 0));
-  strcpy(dst, &buf[idx + 1]);
 }
