@@ -1,3 +1,5 @@
+add_definitions(-DBME280_32BIT_ENABLE)
+
 add_library(bme280 INTERFACE)
 
 target_sources(bme280 INTERFACE
